@@ -4,6 +4,7 @@ import { useToast, Toast } from "./components/Toast";
 import { Landing } from "./components/Landing";
 import { Dashboard } from "./components/Dashboard";
 import { readableError } from "./lib/stellar";
+import { Analytics } from "@vercel/analytics/react";
 
 export default function App() {
   const wallet = useFreighter();
@@ -40,6 +41,7 @@ export default function App() {
         <Landing onGetStarted={handleGetStarted} />
       )}
       <Toast toast={toast} />
+      <Analytics />
     </>
   );
 }
