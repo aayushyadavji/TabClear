@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import type { FreighterState } from "../hooks/useFreighter";
+import type { WalletState } from "../hooks/useWallet";
 import type { TxRecord } from "../types";
 import {
   getXlmBalance,
@@ -8,15 +8,18 @@ import {
   getPaymentHistory,
   shortAddress,
   explorerTxUrl,
+  explorerContractUrl,
   readableError,
   config,
 } from "../lib/stellar";
-import { Copy, Logout, Chevron, Refresh, SendIcon, CashOut, Inbox, QrIcon } from "./icons";
+import { Copy, Logout, Chevron, Refresh, SendIcon, CashOut, Inbox } from "./icons";
 import { SendModal } from "./SendModal";
 import { CashoutModal } from "./CashoutModal";
+import { RequestsPanel } from "./RequestsPanel";
+import { markPaid } from "../lib/contract";
 
 interface Props {
-  wallet: FreighterState;
+  wallet: WalletState;
   onBackToLanding: () => void;
   toast: (msg: string, variant?: "default" | "error") => void;
 }
@@ -31,6 +34,9 @@ export function Dashboard({ wallet, onBackToLanding, toast }: Props) {
   const [funding, setFunding] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showSend, setShowSend] = useState(false);
+  const [sendPrefill, setSendPrefill] = useState<
+    { destination: string; amount: string; label: string; requestId?: number } | undefined
+  >(undefined);
   const [showCashout, setShowCashout] = useState(false);
   const [txs, setTxs] = useState<TxRecord[]>([]);
   const [loadingTxs, setLoadingTxs] = useState(false);
@@ -111,11 +117,30 @@ export function Dashboard({ wallet, onBackToLanding, toast }: Props) {
 
   function onPaymentSuccess(tx: TxRecord) {
     setTxs((prev) => [tx, ...prev]);
-    toast("Payment settled instantly");
+    // If this payment settled an on-chain request, mark it paid on the contract.
+    const requestId = sendPrefill?.requestId;
+    if (requestId != null && wallet.address) {
+      toast("Payment sent — marking the request paid on-chain…");
+      markPaid(wallet.address, requestId, wallet.sign)
+        .then(() => toast("Request marked paid on-chain"))
+        .catch((err) => toast(readableError(err), "error"));
+    } else {
+      toast("Payment settled instantly");
+    }
     setTimeout(() => {
       refreshBalance();
       refreshTxs();
     }, 1500);
+  }
+
+  function openSend() {
+    setSendPrefill(undefined);
+    setShowSend(true);
+  }
+
+  function payRequest(p: { destination: string; amount: string; label: string; requestId: number }) {
+    setSendPrefill(p);
+    setShowSend(true);
   }
 
   function selectView(item: View) {
@@ -200,7 +225,7 @@ export function Dashboard({ wallet, onBackToLanding, toast }: Props) {
                       {funding ? "Funding…" : "Fund with Friendbot"}
                     </button>
                   ) : (
-                    <button className="btn btn-light" onClick={() => setShowSend(true)}>
+                    <button className="btn btn-light" onClick={openSend}>
                       <SendIcon />
                       Send payment
                     </button>
@@ -230,30 +255,16 @@ export function Dashboard({ wallet, onBackToLanding, toast }: Props) {
               </div>
             </div>
 
-            <ActivityPanel txs={txs} funded={funded} loading={loadingTxs} onNew={() => setShowSend(true)} onRefresh={refreshTxs} />
+            <ActivityPanel txs={txs} funded={funded} loading={loadingTxs} onNew={openSend} onRefresh={refreshTxs} />
           </>
         )}
 
         {view === "Transactions" && (
-          <ActivityPanel txs={txs} funded={funded} loading={loadingTxs} onNew={() => setShowSend(true)} onRefresh={refreshTxs} full />
+          <ActivityPanel txs={txs} funded={funded} loading={loadingTxs} onNew={openSend} onRefresh={refreshTxs} full />
         )}
 
         {view === "Requests" && (
-          <div className="panel">
-            <div className="panel-head">
-              <h2>Payment requests</h2>
-            </div>
-            <div className="empty-state">
-              <div className="empty-icon">
-                <QrIcon />
-              </div>
-              <p>
-                QR payment requests arrive at Yellow Belt, backed by a Soroban contract.
-                <br />
-                For now, use <strong>Send payment</strong> on the Overview to move testnet XLM.
-              </p>
-            </div>
-          </div>
+          <RequestsPanel wallet={wallet} toast={toast} onPay={payRequest} />
         )}
 
         {view === "Settings" && (
@@ -263,8 +274,16 @@ export function Dashboard({ wallet, onBackToLanding, toast }: Props) {
             </div>
             <div className="settings-list">
               <SettingRow label="Connected address" value={addr || "—"} mono onCopy={copyAddress} />
+              <SettingRow label="Wallet" value={wallet.walletName ?? "—"} />
               <SettingRow label="Network" value={wallet.network ?? "unknown"} />
               <SettingRow label="Horizon endpoint" value={config.horizonUrl} mono />
+              <SettingRow label="Soroban RPC" value={config.rpcUrl} mono />
+              <SettingRow
+                label="Requests contract"
+                value={config.contractId || "not configured"}
+                mono
+                href={config.contractId ? explorerContractUrl(config.contractId) : undefined}
+              />
               <SettingRow
                 label="Explorer"
                 value="Stellar Expert (testnet)"
@@ -282,7 +301,12 @@ export function Dashboard({ wallet, onBackToLanding, toast }: Props) {
       </main>
 
       {showSend && wallet.address && (
-        <SendModal wallet={wallet} onClose={() => setShowSend(false)} onSuccess={onPaymentSuccess} />
+        <SendModal
+          wallet={wallet}
+          prefill={sendPrefill}
+          onClose={() => setShowSend(false)}
+          onSuccess={onPaymentSuccess}
+        />
       )}
       {showCashout && (
         <CashoutModal

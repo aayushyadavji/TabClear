@@ -404,3 +404,33 @@ footer {
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.error .dot { background: var(--rust); }
 .toast .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
+
+/* --- Yellow Belt: requests, QR, status pills --- */
+.requests-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+@media (max-width: 900px) { .requests-grid { grid-template-columns: 1fr; } }
+
+.muted { font-size: 13.5px; color: var(--ink-soft); margin-bottom: 16px; line-height: 1.5; }
+
+.status-pill {
+  font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+  text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
+}
+.status-pill.pending { background: #F5ECD2; color: #8A6D1E; }
+.status-pill.success { background: var(--moss-light); color: var(--moss-deep); }
+.status-pill.failed { background: #F3D9D2; color: var(--rust); }
+
+.qr-card {
+  display: flex; gap: 18px; align-items: center; margin-top: 20px;
+  background: var(--cream-deep); border-radius: 16px; padding: 18px;
+}
+.qr-card svg { flex-shrink: 0; background: var(--white-hot); border-radius: 12px; padding: 10px; }
+.qr-meta { text-align: left; }
+.qr-id { font-family: 'Fraunces', serif; font-size: 17px; color: var(--moss-deep); margin-bottom: 4px; }
+.qr-amt { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+.qr-memo { font-size: 13px; color: var(--ink-soft); margin-bottom: 8px; }
+
+.request-context {
+  background: var(--moss-light); color: var(--moss-deep); font-size: 13px; font-weight: 600;
+  padding: 10px 14px; border-radius: 10px; margin-bottom: 18px; text-align: left;
+}
+

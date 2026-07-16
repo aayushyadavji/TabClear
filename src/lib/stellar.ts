@@ -1,14 +1,22 @@
 import * as StellarSdk from "@stellar/stellar-sdk";
 
-// White Belt targets Stellar Testnet only.
+// Tabclear targets Stellar Testnet only.
 export const config = {
   horizonUrl: "https://horizon-testnet.stellar.org",
+  rpcUrl: "https://soroban-testnet.stellar.org",
   networkPassphrase: StellarSdk.Networks.TESTNET,
   friendbotUrl: "https://friendbot.stellar.org",
   explorerBase: "https://stellar.expert/explorer/testnet",
+  // Yellow Belt: set after deploying tabclear-requests (see VITE_CONTRACT_ID).
+  contractId: (import.meta.env.VITE_CONTRACT_ID as string | undefined) ?? "",
 };
 
 export const horizon = new StellarSdk.Horizon.Server(config.horizonUrl);
+export const rpc = new StellarSdk.rpc.Server(config.rpcUrl);
+
+export function explorerContractUrl(contractId: string): string {
+  return `${config.explorerBase}/contract/${contractId}`;
+}
 
 export function explorerTxUrl(hash: string): string {
   return `${config.explorerBase}/tx/${hash}`;
@@ -150,8 +158,19 @@ function isNotFound(err: unknown): boolean {
   );
 }
 
-/** Turn Horizon/SDK errors into a human-readable message. */
+/** Turn Horizon/SDK/wallet errors into a human-readable message. */
 export function readableError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+
+  // Error type 1: wallet not installed / not found.
+  if (/not installed|not found|no wallet|unavailable/i.test(msg)) {
+    return "That wallet isn't available. Install its extension, then reload and reconnect.";
+  }
+  // Error type 2: user rejected the signature request.
+  if (/reject|declined|denied|cancel|user closed|closed the modal/i.test(msg)) {
+    return "Signature request was rejected in your wallet.";
+  }
+
   if (isNotFound(err)) {
     return "Account not found on testnet — fund it with Friendbot first.";
   }
@@ -161,6 +180,7 @@ export function readableError(err: unknown): string {
     }
   )?.response?.data?.extras?.result_codes;
   if (resultCodes) {
+    // Error type 3: insufficient balance for amount + fee.
     if (resultCodes.operations?.includes("op_underfunded")) {
       return "Insufficient balance to cover this payment plus the fee.";
     }
@@ -169,6 +189,6 @@ export function readableError(err: unknown): string {
     }
     return `Transaction failed: ${resultCodes.transaction ?? "unknown error"}.`;
   }
-  if (err instanceof Error) return err.message;
+  if (msg) return msg;
   return "Something went wrong. Please try again.";
 }

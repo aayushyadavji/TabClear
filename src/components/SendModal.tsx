@@ -6,21 +6,22 @@ import {
   readableError,
   explorerTxUrl,
 } from "../lib/stellar";
-import type { FreighterState } from "../hooks/useFreighter";
+import type { WalletState } from "../hooks/useWallet";
 import type { TxRecord } from "../types";
 import { Check } from "./icons";
 
 type Phase = "form" | "building" | "signing" | "submitting" | "success" | "error";
 
 interface Props {
-  wallet: FreighterState;
+  wallet: WalletState;
   onClose: () => void;
   onSuccess: (tx: TxRecord) => void;
+  prefill?: { destination: string; amount: string; label?: string };
 }
 
-export function SendModal({ wallet, onClose, onSuccess }: Props) {
-  const [destination, setDestination] = useState("");
-  const [amount, setAmount] = useState("");
+export function SendModal({ wallet, onClose, onSuccess, prefill }: Props) {
+  const [destination, setDestination] = useState(prefill?.destination ?? "");
+  const [amount, setAmount] = useState(prefill?.amount ?? "");
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState("");
   const [hash, setHash] = useState("");
@@ -75,7 +76,7 @@ export function SendModal({ wallet, onClose, onSuccess }: Props) {
     phase === "building"
       ? "Building transaction…"
       : phase === "signing"
-      ? "Waiting for your signature in Freighter…"
+      ? "Waiting for your signature in your wallet…"
       : "Submitting to the network…";
 
   return (
@@ -85,6 +86,8 @@ export function SendModal({ wallet, onClose, onSuccess }: Props) {
           <>
             <h3>Send a payment</h3>
             <p>Send XLM from your connected wallet on Stellar testnet. Settles in seconds.</p>
+
+            {prefill?.label && <div className="request-context">{prefill.label}</div>}
 
             <div className="field">
               <label>Destination address</label>
