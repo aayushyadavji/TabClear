@@ -300,6 +300,18 @@ export function Dashboard({ wallet, onBackToLanding, toast }: Props) {
         )}
       </main>
 
+      <nav className="bottom-nav">
+        {SIDEBAR_ITEMS.map((item) => (
+          <button
+            key={item}
+            className={`bn-item${item === view ? " active" : ""}`}
+            onClick={() => selectView(item)}
+          >
+            {item}
+          </button>
+        ))}
+      </nav>
+
       {showSend && wallet.address && (
         <SendModal
           wallet={wallet}
