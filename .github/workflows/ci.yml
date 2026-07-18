@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  contracts:
+    name: Contracts (test + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tabclear/contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tabclear/contracts/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('tabclear/contracts/**/Cargo.toml') }}
+
+      - name: Run contract tests
+        run: cargo test --workspace
+
+      - name: Build wasm
+        run: cargo build --release --target wasm32v1-none
+
+      - name: Upload wasm artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-wasm
+          path: tabclear/contracts/target/wasm32v1-none/release/*.wasm
+
+  frontend:
+    name: Frontend (typecheck + test + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tabclear
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: tabclear/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Typecheck + build
+        run: npm run build
