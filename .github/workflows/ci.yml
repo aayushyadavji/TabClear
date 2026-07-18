@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: tabclear/contracts
+        working-directory: contracts
     steps:
       - uses: actions/checkout@v4
 
@@ -27,8 +27,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            tabclear/contracts/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('tabclear/contracts/**/Cargo.toml') }}
+            contracts/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.toml') }}
 
       - name: Run contract tests
         run: cargo test --workspace
@@ -40,23 +40,19 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: contract-wasm
-          path: tabclear/contracts/target/wasm32v1-none/release/*.wasm
+          path: contracts/target/wasm32v1-none/release/*.wasm
 
   frontend:
     name: Frontend (typecheck + test + build)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: tabclear
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
-          cache-dependency-path: tabclear/package-lock.json
 
       - name: Install dependencies
         run: npm ci
