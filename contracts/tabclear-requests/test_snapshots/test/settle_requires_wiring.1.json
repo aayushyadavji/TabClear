@@ -1,6 +1,6 @@
 {
   "generators": {
-    "address": 2,
+    "address": 3,
     "nonce": 0,
     "mux_id": 0
   },
@@ -19,10 +19,10 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "i128": "100"
+                  "i128": "75"
                 },
                 {
-                  "string": "table 4"
+                  "string": "lunch"
                 }
               ]
             }
@@ -31,7 +31,6 @@
         }
       ]
     ],
-    [],
     []
   ],
   "ledger": {
@@ -86,7 +85,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "100"
+                        "i128": "75"
                       }
                     },
                     {
@@ -102,7 +101,7 @@
                         "symbol": "memo"
                       },
                       "val": {
-                        "string": "table 4"
+                        "string": "lunch"
                       }
                     },
                     {

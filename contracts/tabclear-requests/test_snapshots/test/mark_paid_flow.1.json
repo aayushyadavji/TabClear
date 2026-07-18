@@ -109,6 +109,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "created_at"
+                      },
+                      "val": {
+                        "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "memo"
                       },
                       "val": {
@@ -125,10 +133,28 @@
                     },
                     {
                       "key": {
-                        "symbol": "paid"
+                        "symbol": "paid_at"
                       },
                       "val": {
-                        "bool": true
+                        "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "paid_by"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "status"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "symbol": "Paid"
+                          }
+                        ]
                       }
                     }
                   ]

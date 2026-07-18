@@ -1,5 +1,5 @@
 [package]
-name = "tabclear-requests"
+name = "tabclear-settlement"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -9,6 +9,7 @@ crate-type = ["lib", "cdylib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
+tabclear-requests = { path = "../tabclear-requests" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
