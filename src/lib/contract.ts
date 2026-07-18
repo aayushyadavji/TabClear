@@ -1,17 +1,23 @@
 import * as StellarSdk from "@stellar/stellar-sdk";
 import { rpc, config, explorerTxUrl } from "./stellar";
+import { stroopsToXlm, xlmToStroops, readContractError } from "./format";
+
+export type RequestStatus = "Open" | "Paid" | "Cancelled";
 
 export interface OnChainRequest {
   id: number;
   merchant: string;
   amount: string; // XLM (stroops / 1e7)
   memo: string;
+  status: RequestStatus;
   paid: boolean;
+  cancelled: boolean;
+  paidBy?: string;
 }
 
 export interface ContractEventRecord {
   id: string;
-  kind: "created" | "paid";
+  kind: "created" | "paid" | "settled";
   requestId: number;
   merchant: string;
   amount?: string;
@@ -20,29 +26,13 @@ export interface ContractEventRecord {
   txHash: string;
 }
 
-const STROOPS = 10_000_000n;
-
 function requireContract(): string {
   if (!config.contractId) {
     throw new Error(
-      "Contract not configured. Set VITE_CONTRACT_ID after deploying tabclear-requests."
+      "Contract not configured. Set VITE_REQUESTS_ID after deploying tabclear-requests."
     );
   }
   return config.contractId;
-}
-
-/** stroops (i128 on-chain) -> XLM string */
-function stroopsToXlm(stroops: bigint): string {
-  const whole = stroops / STROOPS;
-  const frac = (stroops % STROOPS).toString().padStart(7, "0").replace(/0+$/, "");
-  return frac ? `${whole}.${frac}` : whole.toString();
-}
-
-/** XLM string -> stroops (i128) */
-function xlmToStroops(amount: string): bigint {
-  const [whole, frac = ""] = amount.trim().split(".");
-  const fracPadded = (frac + "0000000").slice(0, 7);
-  return BigInt(whole || "0") * STROOPS + BigInt(fracPadded || "0");
 }
 
 async function buildInvoke(
@@ -124,19 +114,20 @@ export async function markPaid(
   return { hash };
 }
 
-/** Read a request by id via simulation (no signature, no fee). */
-export async function getRequest(
+/** Run a read-only contract call via simulation; returns the native return value. */
+async function simulateRead(
   source: string,
-  id: number
-): Promise<OnChainRequest> {
-  const args = [StellarSdk.nativeToScVal(id, { type: "u32" })];
+  contractId: string,
+  method: string,
+  args: StellarSdk.xdr.ScVal[]
+): Promise<unknown> {
   const account = await rpc.getAccount(source);
-  const contract = new StellarSdk.Contract(requireContract());
+  const contract = new StellarSdk.Contract(contractId);
   const tx = new StellarSdk.TransactionBuilder(account, {
     fee: StellarSdk.BASE_FEE,
     networkPassphrase: config.networkPassphrase,
   })
-    .addOperation(contract.call("get_request", ...args))
+    .addOperation(contract.call(method, ...args))
     .setTimeout(180)
     .build();
 
@@ -145,44 +136,81 @@ export async function getRequest(
     throw new Error(readContractError(sim.error));
   }
   const raw = sim.result?.retval;
-  if (!raw) throw new Error("Request not found.");
-  const native = StellarSdk.scValToNative(raw) as {
-    merchant: string;
-    amount: bigint;
-    memo: string;
-    paid: boolean;
-  };
+  if (!raw) throw new Error("No value returned from contract.");
+  return StellarSdk.scValToNative(raw);
+}
+
+interface RawV2Request {
+  merchant: string;
+  amount: bigint;
+  memo: string;
+  status: RequestStatus | { tag: RequestStatus };
+  paid_by?: string | null;
+}
+
+function decodeRequest(id: number, native: RawV2Request): OnChainRequest {
+  // scValToNative renders the Status enum as either "Open" or { tag: "Open" }.
+  const status = (
+    typeof native.status === "string" ? native.status : native.status?.tag
+  ) as RequestStatus;
   return {
     id,
     merchant: native.merchant,
     amount: stroopsToXlm(BigInt(native.amount)),
     memo: native.memo,
-    paid: native.paid,
+    status,
+    paid: status === "Paid",
+    cancelled: status === "Cancelled",
+    paidBy: native.paid_by ?? undefined,
   };
 }
 
-/** Poll recent contract events (created/paid) from RPC, newest-first. */
+/** Read a request by id via simulation (no signature, no fee). */
+export async function getRequest(
+  source: string,
+  id: number
+): Promise<OnChainRequest> {
+  const native = (await simulateRead(source, requireContract(), "get_request", [
+    StellarSdk.nativeToScVal(id, { type: "u32" }),
+  ])) as RawV2Request;
+  return decodeRequest(id, native);
+}
+
+/** Newest-first page of on-chain requests (real data, no id guessing). */
+export async function listRequests(
+  source: string,
+  start = 0,
+  limit = 20
+): Promise<OnChainRequest[]> {
+  const native = (await simulateRead(source, requireContract(), "list_requests", [
+    StellarSdk.nativeToScVal(start, { type: "u32" }),
+    StellarSdk.nativeToScVal(limit, { type: "u32" }),
+  ])) as Array<[number, RawV2Request]>;
+  return native.map(([id, req]) => decodeRequest(Number(id), req));
+}
+
+/** Poll recent contract events (created/paid/settled) from RPC, newest-first. */
 export async function getContractEvents(
   fromLedger?: number
 ): Promise<ContractEventRecord[]> {
-  const contractId = requireContract();
+  const contractIds = [config.contractId, config.settlementId].filter(Boolean);
+  if (contractIds.length === 0) return [];
   const latest = await rpc.getLatestLedger();
   const start = fromLedger ?? Math.max(latest.sequence - 8000, 1);
 
   const res = await rpc.getEvents({
     startLedger: start,
-    filters: [{ type: "contract", contractIds: [contractId] }],
+    filters: [{ type: "contract", contractIds }],
   });
 
   const records: ContractEventRecord[] = [];
   for (const ev of res.events) {
     const topics = ev.topic.map((t) => StellarSdk.scValToNative(t));
     const kind = topics[0] as string;
-    if (kind !== "created" && kind !== "paid") continue;
-    const merchant = String(topics[1] ?? "");
     const value = StellarSdk.scValToNative(ev.value);
 
     if (kind === "created") {
+      const merchant = String(topics[1] ?? "");
       const [reqId, amount] = value as [number, bigint];
       records.push({
         id: ev.id,
@@ -194,12 +222,26 @@ export async function getContractEvents(
         time: new Date(ev.ledgerClosedAt).getTime(),
         txHash: ev.txHash,
       });
-    } else {
+    } else if (kind === "paid") {
+      const merchant = String(topics[1] ?? "");
       records.push({
         id: ev.id,
         kind,
         requestId: Number(value),
         merchant,
+        ledger: ev.ledger,
+        time: new Date(ev.ledgerClosedAt).getTime(),
+        txHash: ev.txHash,
+      });
+    } else if (kind === "settled") {
+      // settlement contract: topics ("settled", id) | data (payer, merchant, amount)
+      const [, merchant, amount] = value as [string, string, bigint];
+      records.push({
+        id: ev.id,
+        kind,
+        requestId: Number(topics[1] ?? 0),
+        merchant: String(merchant ?? ""),
+        amount: stroopsToXlm(BigInt(amount)),
         ledger: ev.ledger,
         time: new Date(ev.ledgerClosedAt).getTime(),
         txHash: ev.txHash,
@@ -211,19 +253,4 @@ export async function getContractEvents(
 
 export function contractExplorerTxUrl(hash: string): string {
   return explorerTxUrl(hash);
-}
-
-/** Map a contract error scval / message to something readable. */
-function readContractError(err: unknown): string {
-  const msg = typeof err === "string" ? err : JSON.stringify(err);
-  if (/#2\b|AlreadyPaid|Error\(Contract, #2\)/.test(msg)) {
-    return "This request is already marked as paid.";
-  }
-  if (/#1\b|NotFound|Error\(Contract, #1\)/.test(msg)) {
-    return "That request doesn't exist.";
-  }
-  if (/#3\b|InvalidAmount|Error\(Contract, #3\)/.test(msg)) {
-    return "Amount must be greater than zero.";
-  }
-  return `Contract call failed: ${msg}`;
 }

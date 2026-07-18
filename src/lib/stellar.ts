@@ -7,8 +7,13 @@ export const config = {
   networkPassphrase: StellarSdk.Networks.TESTNET,
   friendbotUrl: "https://friendbot.stellar.org",
   explorerBase: "https://stellar.expert/explorer/testnet",
-  // Yellow Belt: set after deploying tabclear-requests (see VITE_CONTRACT_ID).
-  contractId: (import.meta.env.VITE_CONTRACT_ID as string | undefined) ?? "",
+  // Yellow Belt: tabclear-requests (also readable as VITE_REQUESTS_ID).
+  contractId:
+    (import.meta.env.VITE_REQUESTS_ID as string | undefined) ??
+    (import.meta.env.VITE_CONTRACT_ID as string | undefined) ??
+    "",
+  // Orange Belt: tabclear-settlement — atomic one-tx pay via cross-contract calls.
+  settlementId: (import.meta.env.VITE_SETTLEMENT_ID as string | undefined) ?? "",
 };
 
 export const horizon = new StellarSdk.Horizon.Server(config.horizonUrl);
